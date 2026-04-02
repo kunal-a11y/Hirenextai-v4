@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model ai_usage {
+  id         Int       @id @default(autoincrement())
+  user_id    Int?
+  type       String?   @db.VarChar(50)
+  count      Int?      @default(0)
+  month_year String?   @db.VarChar(7)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+
+  @@index([user_id], map: "idx_ai_usage_user")
+}
+
+model alert_notifications {
+  id         Int       @id @default(autoincrement())
+  user_id    Int?
+  is_read    Boolean?  @default(false)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model applications {
+  id         Int       @id @default(autoincrement())
+  job_id     Int?
+  user_id    Int?
+  status     String?   @default("applied") @db.VarChar(50)
+  applied_at DateTime? @default(now()) @db.Timestamp(0)
+  jobs       jobs?     @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "applications_ibfk_1")
+  users      users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "applications_ibfk_2")
+
+  @@index([job_id], map: "job_id")
+  @@index([user_id], map: "user_id")
+}
+
+model conversations {
+  id         Int        @id @default(autoincrement())
+  title      String?    @db.VarChar(255)
+  created_at DateTime?  @default(now()) @db.Timestamp(0)
+  messages   messages[]
+}
+
+model credit_transactions {
+  id           Int       @id @default(autoincrement())
+  user_id      Int?
+  credits_used Int?      @default(0)
+  month_year   String?   @db.VarChar(7)
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model job_alerts {
+  id        Int     @id @default(autoincrement())
+  user_id   Int?
+  frequency String? @default("daily") @db.VarChar(50)
+}
+
+model jobs {
+  id                   Int            @id @default(autoincrement())
+  title                String?        @db.Text
+  company              String?        @db.Text
+  company_logo_url     String?        @db.Text
+  location             String?        @db.Text
+  is_remote            Boolean?       @default(false)
+  type                 String?        @db.VarChar(50)
+  category             String?        @db.VarChar(100)
+  salary_min           Int?
+  salary_max           Int?
+  description          String?        @db.LongText
+  requirements         String?        @db.LongText
+  skills               Json?
+  is_fresher           Boolean?       @default(false)
+  experience_years     Int?
+  application_count    Int?           @default(0)
+  source               String?        @db.VarChar(100)
+  apply_url            String?        @db.Text
+  posted_at            DateTime?      @db.DateTime(0)
+  created_at           DateTime?      @default(now()) @db.DateTime(0)
+  is_direct_post       Boolean?       @default(false)
+  posted_by_user_id    Int?
+  application_deadline DateTime?      @db.DateTime(0)
+  view_count           Int?           @default(0)
+  company_website      String?        @db.Text
+  is_boosted           Boolean?       @default(false)
+  boosted_at           DateTime?      @db.DateTime(0)
+  boost_expiry         DateTime?      @db.DateTime(0)
+  is_featured          Boolean?       @default(false)
+  featured_at          DateTime?      @db.DateTime(0)
+  featured_expiry      DateTime?      @db.DateTime(0)
+  applications         applications[]
+}
+
+model messages {
+  id              Int            @id @default(autoincrement())
+  conversation_id Int?
+  role            String?        @db.VarChar(50)
+  content         String?        @db.Text
+  created_at      DateTime?      @default(now()) @db.Timestamp(0)
+  conversations   conversations? @relation(fields: [conversation_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "messages_ibfk_1")
+
+  @@index([conversation_id], map: "conversation_id")
+}
+
+model profiles {
+  id                    Int       @id @default(autoincrement())
+  user_id               Int?      @unique(map: "user_id")
+  headline              String?   @db.Text
+  bio                   String?   @db.Text
+  skills                Json?
+  education             Json?
+  experience            Json?
+  resume_url            String?   @db.Text
+  preferred_locations   Json?
+  preferred_categories  Json?
+  open_to_remote        Int?      @default(0) @db.TinyInt
+  expected_salary_min   Int?
+  expected_salary_max   Int?
+  is_fresher            Int?      @default(1) @db.TinyInt
+  degree_level          String?   @db.VarChar(100)
+  specialization        String?   @db.VarChar(255)
+  setup_completed       Int?      @default(0) @db.TinyInt
+  date_of_birth         DateTime? @db.Date
+  gender                String?   @db.VarChar(50)
+  languages             Json?
+  certifications        Json?
+  portfolio_links       Json?
+  internship_experience Json?
+  job_type_preference   Json?
+  availability_status   String?   @db.VarChar(100)
+  career_goal           String?   @db.Text
+  created_at            DateTime? @default(now()) @db.Timestamp(0)
+  updated_at            DateTime? @default(now()) @db.DateTime(0)
+  users                 users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profiles_ibfk_1")
+}
+
+model recruiter_profiles {
+  id           Int       @id @default(autoincrement())
+  user_id      Int?      @unique(map: "user_id")
+  company_name String?   @db.VarChar(255)
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model resumes {
+  id         Int       @id @default(autoincrement())
+  user_id    Int?      @unique(map: "user_id")
+  file_url   String?   @db.Text
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  users      users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "resumes_ibfk_1")
+}
+
+model saved_jobs {
+  id       Int       @id @default(autoincrement())
+  user_id  Int?
+  job_id   Int?
+  saved_at DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model sessions {
+  id         Int       @id @default(autoincrement())
+  user_id    Int?
+  token      String?   @db.Text
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  users      users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "sessions_ibfk_1")
+
+  @@index([user_id], map: "user_id")
+}
+
+model subscriptions {
+  id                   Int       @id @default(autoincrement())
+  user_id              Int?      @unique(map: "user_id")
+  plan                 String?   @default("free") @db.VarChar(50)
+  status               String?   @default("active") @db.VarChar(50)
+  created_at           DateTime? @default(now()) @db.Timestamp(0)
+  current_period_start DateTime? @db.DateTime(0)
+  current_period_end   DateTime? @db.DateTime(0)
+  cancelled_at         DateTime? @db.DateTime(0)
+  updated_at           DateTime? @default(now()) @db.DateTime(0)
+  users                users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "subscriptions_ibfk_1")
+}
+
+model support_messages {
+  id         Int       @id @default(autoincrement())
+  ticket_id  Int?
+  sender     String?   @db.VarChar(50)
+  message    String?   @db.Text
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model support_tickets {
+  id          Int       @id @default(autoincrement())
+  user_id     Int?
+  name        String?   @db.VarChar(255)
+  email       String?   @db.VarChar(255)
+  subject     String?   @db.Text
+  message     String?   @db.Text
+  status      String?   @default("open") @db.VarChar(50)
+  admin_reply String?   @db.Text
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model users {
+  id                Int            @id @default(autoincrement())
+  name              String         @db.VarChar(255)
+  email             String?        @unique(map: "email") @db.VarChar(255)
+  password_hash     String         @db.Text
+  subscription_plan String?        @default("free") @db.VarChar(50)
+  role              String?        @default("job_seeker") @db.VarChar(50)
+  banned            Int?           @default(0) @db.TinyInt
+  created_at        DateTime?      @default(now()) @db.Timestamp(0)
+  phone             String?        @db.Text
+  avatar_url        String?        @db.Text
+  updated_at        DateTime?      @default(now()) @db.DateTime(0)
+  applications      applications[]
+  profiles          profiles?
+  resumes           resumes?
+  sessions          sessions[]
+  subscriptions     subscriptions?
+}
