@@ -11,7 +11,7 @@ import recruiterRouter from "./recruiter.js";
 import alertsRouter from "./alerts.js";
 import savedJobsRouter from "./saved-jobs.js";
 import dashboardRouter from "./dashboard.js";
-// import supportRouter from "./support.js";
+import supportRouter from "./support.js";
 import adminRouter from "./admin.js";
 
 const router: IRouter = Router();
@@ -28,7 +28,7 @@ router.use("/recruiter", recruiterRouter);
 router.use("/alerts", alertsRouter);
 router.use("/saved-jobs", savedJobsRouter);
 router.use("/dashboard", dashboardRouter);
-// router.use("/support", supportRouter);
+router.use("/support", supportRouter);
 router.use("/admin", adminRouter);
 
 export default router;

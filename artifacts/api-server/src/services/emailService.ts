@@ -141,3 +141,64 @@ export async function sendJobAlertEmail(
     return false;
   }
 }
+
+async function sendGenericEmail(to: string, subject: string, html: string, text: string): Promise<boolean> {
+  const transporter = getTransporter();
+  if (!transporter) {
+    console.log(`[EmailService] SMTP not configured — skipping email to ${to}`);
+    return false;
+  }
+  const from = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "noreply@hirenextai.com";
+  try {
+    await transporter.sendMail({ from, to, subject, html, text });
+    return true;
+  } catch (err: any) {
+    console.error(`[EmailService] Failed to send to ${to}: ${err.message}`);
+    return false;
+  }
+}
+
+export async function sendSignupEmail(to: string, name: string) {
+  return sendGenericEmail(
+    to,
+    "Welcome to HireNextAI 🎉",
+    `<p>Hi ${name},</p><p>Welcome to HireNextAI. Your account is ready.</p>`,
+    `Hi ${name},\n\nWelcome to HireNextAI. Your account is ready.`,
+  );
+}
+
+export async function sendPasswordResetEmail(to: string, name: string, resetUrl: string) {
+  return sendGenericEmail(
+    to,
+    "Reset your HireNextAI password",
+    `<p>Hi ${name},</p><p>Reset your password using this secure link:</p><p><a href="${resetUrl}">${resetUrl}</a></p>`,
+    `Hi ${name},\n\nReset your password with this link:\n${resetUrl}`,
+  );
+}
+
+export async function sendSubscriptionEmail(to: string, name: string, plan: string) {
+  return sendGenericEmail(
+    to,
+    `Subscription updated: ${plan}`,
+    `<p>Hi ${name},</p><p>Your subscription is now <strong>${plan}</strong>.</p>`,
+    `Hi ${name},\n\nYour subscription is now ${plan}.`,
+  );
+}
+
+export async function sendSupportReplyEmail(to: string, name: string, subject: string, reply: string) {
+  return sendGenericEmail(
+    to,
+    `Support reply: ${subject}`,
+    `<p>Hi ${name},</p><p>Our support team replied:</p><blockquote>${reply}</blockquote>`,
+    `Hi ${name},\n\nOur support team replied:\n${reply}`,
+  );
+}
+
+export async function sendAdminBroadcastEmail(to: string, name: string, title: string, message: string) {
+  return sendGenericEmail(
+    to,
+    `[HireNextAI] ${title}`,
+    `<p>Hi ${name},</p><p>${message}</p>`,
+    `Hi ${name},\n\n${message}`,
+  );
+}

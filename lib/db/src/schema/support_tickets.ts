@@ -10,6 +10,7 @@ export const supportTicketsTable = mysqlTable(
     name: text("name").notNull(),
     email: text("email").notNull(),
     subject: text("subject").notNull(),
+    category: text("category").notNull().default("general"),
     message: text("message").notNull(),
     status: text("status").notNull().default("open"),
     adminReply: text("admin_reply"),
@@ -18,6 +19,7 @@ export const supportTicketsTable = mysqlTable(
   (t) => [
     index("support_tickets_email_idx").on(t.email),
     index("support_tickets_status_idx").on(t.status),
+    index("support_tickets_category_idx").on(t.category),
     index("support_tickets_created_at_idx").on(t.createdAt),
   ]
 );

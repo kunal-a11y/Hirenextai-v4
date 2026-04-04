@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, subscriptionsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { authenticate, AuthRequest } from "../middlewares/authenticate.js";
+import { sendSubscriptionEmail } from "../services/emailService.js";
 
 const router = Router();
 
@@ -37,6 +38,7 @@ router.post("/", authenticate, async (req: AuthRequest, res) => {
   }
 
   const periodEnd = plan === "free" ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!)).limit(1);
 
   const [existing] = await db.select().from(subscriptionsTable)
     .where(eq(subscriptionsTable.userId, req.userId!)).limit(1);
@@ -56,6 +58,7 @@ router.post("/", authenticate, async (req: AuthRequest, res) => {
       .where(eq(subscriptionsTable.userId, req.userId!)).limit(1);
 
     await db.update(usersTable).set({ subscriptionPlan: plan, updatedAt: new Date() }).where(eq(usersTable.id, req.userId!));
+    if (user) await sendSubscriptionEmail(user.email, user.name, plan);
 
     res.json({
       id: sub.id,
@@ -78,6 +81,7 @@ router.post("/", authenticate, async (req: AuthRequest, res) => {
       .where(eq(subscriptionsTable.userId, req.userId!)).limit(1);
 
     await db.update(usersTable).set({ subscriptionPlan: plan, updatedAt: new Date() }).where(eq(usersTable.id, req.userId!));
+    if (user) await sendSubscriptionEmail(user.email, user.name, plan);
 
     res.json({
       id: newSub.id,

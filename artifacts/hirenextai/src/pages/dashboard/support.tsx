@@ -1,355 +1,258 @@
-import { useState, useEffect } from "react";
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer
-} from "recharts";
-import jsPDF from "jspdf";
-import { useGetProfile } from "@workspace/api-client-react";
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
+import { Loader2, MessageSquare, Send } from "lucide-react";
+
+type TicketStatus = "open" | "in_progress" | "resolved";
+type TicketCategory = "bug" | "payment" | "account" | "general";
+
+interface Ticket {
+  id: number;
+  subject: string;
+  message: string;
+  status: TicketStatus;
+  createdAt: string;
+  category: TicketCategory;
+}
+
+interface TicketMessage {
+  id: number;
+  sender: "user" | "admin";
+  message: string;
+  createdAt: string;
+}
+
+const API = import.meta.env.VITE_API_URL ?? "/api";
+const TEXT = {
+  en: {
+    title: "Support Center",
+    subtitle: "Submit issues, track status, and chat with support.",
+    create: "Create Ticket",
+    monthly: "Monthly Tickets",
+    yourTickets: "Your Tickets",
+    conversation: "Conversation",
+    submit: "Submit Ticket",
+    loading: "Loading tickets...",
+    empty: "No tickets yet.",
+    selectTicket: "Select a ticket to view thread.",
+    reply: "Reply...",
+    resolve: "Mark as Resolved",
+  },
+  hi: {
+    title: "सपोर्ट सेंटर",
+    subtitle: "समस्या भेजें, स्थिति ट्रैक करें और सपोर्ट से चैट करें।",
+    create: "टिकट बनाएं",
+    monthly: "मासिक टिकट",
+    yourTickets: "आपके टिकट",
+    conversation: "वार्तालाप",
+    submit: "टिकट सबमिट करें",
+    loading: "टिकट लोड हो रहे हैं...",
+    empty: "अभी कोई टिकट नहीं है।",
+    selectTicket: "थ्रेड देखने के लिए टिकट चुनें।",
+    reply: "जवाब लिखें...",
+    resolve: "Resolved चिह्नित करें",
+  }
+} as const;
 
 export default function Support() {
+  const { token } = useAuth();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [selected, setSelected] = useState<Ticket | null>(null);
+  const [messages, setMessages] = useState<TicketMessage[]>([]);
+  const [reply, setReply] = useState("");
+  const [form, setForm] = useState({ subject: "", message: "", category: "bug" as TicketCategory });
+  const lang = (localStorage.getItem("hirenext_lang") === "hi" ? "hi" : "en") as "en" | "hi";
+  const t = TEXT[lang];
 
-  const { data: profile } = useGetProfile();
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    subject: "",
-    message: "",
-  });
-
-  const [tickets, setTickets] = useState<any[]>([]);
-  const [selectedTicket, setSelectedTicket] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [chatMessage, setChatMessage] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-
-  // 🔥 AUTO-FILL USER (WITH FALLBACK)
-  useEffect(() => {
-    if (profile) {
-      console.log("PROFILE:", profile);
-
-      setForm((prev) => ({
-        ...prev,
-        name: profile?.name || profile?.full_name || "",
-        email: profile?.email || "",
-      }));
-
-      loadTickets(profile.id);
-
-    } else {
-      // fallback (localStorage)
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-
-      if (user?.id) {
-        setForm((prev) => ({
-          ...prev,
-          name: user.name || "",
-          email: user.email || "",
-        }));
-
-        loadTickets(user.id);
-      }
-    }
-  }, [profile]);
-
-  // 🔥 LOAD TICKETS
-  const loadTickets = async (userId:number) => {
+  const loadTickets = async () => {
+    if (!token) return;
+    setLoading(true);
     try {
-      const res = await fetch(`/api/support/tickets/${userId}`);
-      const data = await res.json();
-      setTickets(data);
-    } catch (err) {
-      console.error("Load tickets error", err);
+      const res = await fetch(`${API}/support/tickets`, { headers });
+      if (!res.ok) throw new Error();
+      setTickets(await res.json());
+    } catch {
+      toast({ title: "Failed to load support tickets", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   };
 
-  // 🔥 GRAPH DATA FROM REAL TICKETS
-  const chartData = tickets.reduce((acc:any, t:any) => {
-    const date = new Date(t.created_at).toLocaleDateString();
-
-    const found = acc.find((d:any) => d.date === date);
-
-    if (found) {
-      found.tickets += 1;
-    } else {
-      acc.push({ date, tickets: 1 });
+  const openTicket = async (ticket: Ticket) => {
+    setSelected(ticket);
+    try {
+      const res = await fetch(`${API}/support/tickets/${ticket.id}/messages`, { headers });
+      if (!res.ok) throw new Error();
+      setMessages(await res.json());
+    } catch {
+      toast({ title: "Failed to load ticket thread", variant: "destructive" });
     }
-
-    return acc;
-  }, []);
-
-  // 🔥 OPEN TICKET
-  const openTicket = async (ticket:any) => {
-    setSelectedTicket(ticket);
-
-    const res = await fetch(`/api/support/messages/${ticket.id}`);
-    const data = await res.json();
-    setMessages(data);
   };
 
-  // 🔥 CREATE TICKET
-  const handleSubmit = async (e:any) => {
+  useEffect(() => { loadTickets(); }, [token]);
+
+  const monthlyData = useMemo(() => {
+    const map = new Map<string, number>();
+    tickets.forEach((t) => {
+      const key = new Date(t.createdAt).toLocaleDateString("en-US", { month: "short" });
+      map.set(key, (map.get(key) ?? 0) + 1);
+    });
+    return Array.from(map.entries()).map(([month, count]) => ({ month, count }));
+  }, [tickets]);
+
+  const submitTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const userId = profile?.id || JSON.parse(localStorage.getItem("user") || "{}")?.id;
-
-    if (!userId) {
-      alert("User not loaded yet");
-      return;
-    }
-
+    if (!form.subject.trim() || !form.message.trim()) return;
+    setSubmitting(true);
     try {
-      const res = await fetch("/api/support/ticket", {
+      const res = await fetch(`${API}/support/tickets`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          subject: form.subject,
-          message: form.message
-        })
+        headers,
+        body: JSON.stringify(form),
       });
-
-      const data = await res.json();
-      console.log("TICKET:", data);
-
-      loadTickets(userId);
-
-      setForm((prev)=>({
-        ...prev,
-        subject: "",
-        message: ""
-      }));
-
-    } catch (err) {
-      console.error(err);
-      alert("Failed to submit ticket");
+      if (!res.ok) throw new Error();
+      toast({ title: "Ticket created", description: "Support will respond shortly." });
+      setForm({ subject: "", message: "", category: "bug" });
+      loadTickets();
+    } catch {
+      toast({ title: "Could not create ticket", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  // 🔥 SEND MESSAGE
-  const sendMessage = async () => {
-    if (!chatMessage) return;
-
-    await fetch("/api/support/message", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        ticket_id: selectedTicket.id,
-        message: chatMessage,
-        sender: "user"
-      })
-    });
-
-    setChatMessage("");
-    openTicket(selectedTicket);
+  const sendReply = async () => {
+    if (!selected || !reply.trim()) return;
+    try {
+      const res = await fetch(`${API}/support/tickets/${selected.id}/messages`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ sender: "user", message: reply.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      setReply("");
+      openTicket(selected);
+    } catch {
+      toast({ title: "Failed to send message", variant: "destructive" });
+    }
   };
 
-  // 🔥 CLOSE TICKET
   const closeTicket = async () => {
-    await fetch("/api/support/close", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        ticket_id: selectedTicket.id
-      })
-    });
-
-    setSelectedTicket(null);
-    loadTickets(profile?.id);
-  };
-
-  // 📄 DOWNLOAD PDF
-  const downloadPDF = () => {
-    const doc = new jsPDF();
-
-    doc.text(`Ticket #${selectedTicket.id}`, 10, 10);
-
-    messages.forEach((m, i) => {
-      doc.text(`${m.sender}: ${m.message}`, 10, 20 + i * 10);
-    });
-
-    doc.save(`ticket-${selectedTicket.id}.pdf`);
+    if (!selected) return;
+    try {
+      const res = await fetch(`${API}/support/tickets/${selected.id}/status`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ status: "resolved" }),
+      });
+      if (!res.ok) throw new Error();
+      setSelected({ ...selected, status: "resolved" });
+      loadTickets();
+    } catch {
+      toast({ title: "Failed to close ticket", variant: "destructive" });
+    }
   };
 
   return (
-    <div className="p-6 text-white">
-
-      {/* HEADER */}
-      <div className="text-center mb-10 relative">
-        <div className="absolute inset-0 blur-3xl opacity-20 bg-purple-600 rounded-full"></div>
-
-        <h1 className="text-4xl font-bold relative z-10">
-          Support Center
-        </h1>
-
-        <p className="text-white/60 mt-2 relative z-10">
-          Raise a ticket and chat with our team
-        </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-white">{t.title}</h1>
+        <p className="text-sm text-white/50">{t.subtitle}</p>
       </div>
 
-      {/* TOP */}
-      <div className="grid lg:grid-cols-2 gap-8">
-
-        {/* LEFT */}
-        <div className="glass-card p-6">
-
-          {!selectedTicket ? (
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-
-              <input value={form.name || "Loading..."} disabled className="w-full p-3 bg-white/5 border rounded"/>
-              <input value={form.email || "Loading..."} disabled className="w-full p-3 bg-white/5 border rounded"/>
-
-              <input
-                placeholder="Subject"
-                required
-                value={form.subject}
-                onChange={(e)=>setForm({...form, subject:e.target.value})}
-                className="w-full p-3 bg-white/5 border rounded"
-              />
-
-              <textarea
-                placeholder="Message"
-                required
-                value={form.message}
-                onChange={(e)=>setForm({...form, message:e.target.value})}
-                className="w-full p-3 bg-white/5 border rounded"
-              />
-
-              <label className="cursor-pointer text-sm">
-                ➕ Attach file
-                <input type="file" hidden onChange={(e)=>setFile(e.target.files?.[0]||null)} />
-              </label>
-
-              {file && <p className="text-green-400 text-xs">{file.name}</p>}
-
-              <button className="bg-purple-600 w-full py-2 rounded">
-                Submit Ticket
-              </button>
-
+      <div className="grid lg:grid-cols-3 gap-6">
+        <Card className="glass-card lg:col-span-1">
+          <CardHeader><CardTitle>{t.create}</CardTitle></CardHeader>
+          <CardContent>
+            <form onSubmit={submitTicket} className="space-y-3">
+              <Select value={form.category} onValueChange={(value) => setForm((p) => ({ ...p, category: value as TicketCategory }))}>
+                <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bug">Bug</SelectItem>
+                  <SelectItem value="payment">Payment</SelectItem>
+                  <SelectItem value="account">Account</SelectItem>
+                  <SelectItem value="general">General</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input placeholder="Subject" value={form.subject} onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))} />
+              <Textarea placeholder="Describe your issue" value={form.message} onChange={(e) => setForm((p) => ({ ...p, message: e.target.value }))} />
+              <Button disabled={submitting} className="w-full">
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : t.submit}
+              </Button>
             </form>
+          </CardContent>
+        </Card>
 
-          ) : (
-
-            <div>
-
-              <h2>Ticket #{selectedTicket.id}</h2>
-
-              <span className="text-green-400 text-sm">
-                ● {selectedTicket.status}
-              </span>
-
-              <div className="space-y-2 my-4 max-h-60 overflow-y-auto">
-
-                {messages.map((m:any)=>(
-                  <div
-                    key={m.id}
-                    className={`p-2 rounded ${
-                      m.sender==="user"
-                        ? "bg-purple-500/20 text-right"
-                        : "bg-white/10"
-                    }`}
-                  >
-                    {m.message}
-                  </div>
-                ))}
-
-              </div>
-
-              <textarea
-                value={chatMessage}
-                onChange={(e)=>setChatMessage(e.target.value)}
-                className="w-full p-2 bg-white/5 border rounded"
-              />
-
-              <div className="flex justify-between mt-2">
-
-                <label className="cursor-pointer text-sm">
-                  ➕ Attach
-                  <input type="file" hidden />
-                </label>
-
-                <button onClick={sendMessage} className="bg-purple-600 px-4 py-1 rounded">
-                  Send
-                </button>
-
-              </div>
-
-              <div className="flex justify-between mt-4">
-
-                <button onClick={closeTicket} className="text-red-400 text-sm">
-                  Close Ticket
-                </button>
-
-                <button onClick={downloadPDF} className="text-purple-400 text-sm">
-                  Download PDF
-                </button>
-
-              </div>
-
-            </div>
-
-          )}
-
-        </div>
-
-        {/* RIGHT GRAPH */}
-        <div className="glass-card p-6">
-
-          <h3 className="mb-4">Ticket Activity</h3>
-
-          <div className="h-64">
+        <Card className="glass-card lg:col-span-2">
+          <CardHeader><CardTitle>{t.monthly}</CardTitle></CardHeader>
+          <CardContent className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <XAxis dataKey="date" stroke="#aaa"/>
-                <YAxis stroke="#aaa"/>
-                <Tooltip/>
-                <Line type="monotone" dataKey="tickets" stroke="#a855f7" strokeWidth={3}/>
-              </LineChart>
+              <BarChart data={monthlyData}>
+                <XAxis dataKey="month" stroke="rgba(255,255,255,0.45)" />
+                <YAxis stroke="rgba(255,255,255,0.45)" allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#7C3AED" radius={[6, 6, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
-          </div>
-
-        </div>
-
+          </CardContent>
+        </Card>
       </div>
 
-      {/* TICKETS */}
-      <div className="mt-16">
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card className="glass-card">
+          <CardHeader><CardTitle>{t.yourTickets}</CardTitle></CardHeader>
+          <CardContent className="space-y-3 max-h-[420px] overflow-y-auto">
+            {loading ? <p className="text-white/40 text-sm">{t.loading}</p> : tickets.length === 0 ? <p className="text-white/40 text-sm">{t.empty}</p> : tickets.map((ticket) => (
+              <button key={ticket.id} onClick={() => openTicket(ticket)} className="w-full text-left p-3 rounded-xl border border-white/10 hover:bg-white/5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-white truncate">{ticket.subject}</p>
+                  <Badge variant="outline" className="capitalize">{ticket.status.replace("_", " ")}</Badge>
+                </div>
+                <p className="text-xs text-white/50 mt-1 capitalize">{ticket.category} • {new Date(ticket.createdAt).toLocaleDateString()}</p>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
 
-        <h2>Your Tickets</h2>
-
-        <div className="space-y-3 mt-4">
-
-          {tickets.map((t)=>(
-            <div
-              key={t.id}
-              onClick={()=>openTicket(t)}
-              className="glass-card p-4 flex justify-between cursor-pointer"
-            >
-              <span>#{t.id} — {t.subject}</span>
-
-              <span className={
-                t.status==="open"
-                  ? "text-green-400"
-                  : t.status==="answered"
-                  ? "text-yellow-400"
-                  : "text-red-400"
-              }>
-                ● {t.status}
-              </span>
-
-            </div>
-          ))}
-
-        </div>
-
+        <Card className="glass-card">
+          <CardHeader><CardTitle>{selected ? `Ticket #${selected.id}` : t.conversation}</CardTitle></CardHeader>
+          <CardContent>
+            {!selected ? <p className="text-white/40 text-sm">{t.selectTicket}</p> : (
+              <div className="space-y-3">
+                <div className="max-h-[280px] overflow-y-auto space-y-2">
+                  {messages.map((m) => (
+                    <div key={m.id} className={`p-2.5 rounded-lg text-sm ${m.sender === "user" ? "bg-primary/20 text-white ml-8" : "bg-white/10 text-white mr-8"}`}>
+                      {m.message}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t.reply} />
+                  <Button onClick={sendReply} size="icon"><Send className="w-4 h-4" /></Button>
+                </div>
+                {selected.status !== "resolved" && (
+                  <Button variant="outline" onClick={closeTicket} className="w-full">{t.resolve}</Button>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
-
     </div>
   );
 }

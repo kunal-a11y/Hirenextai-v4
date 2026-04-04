@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useDemoStore } from "@/store/demo";
@@ -69,6 +69,21 @@ export default function Auth() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [isGoogleReady, setIsGoogleReady] = useState(false);
+  const API = import.meta.env.VITE_API_URL ?? "/api";
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+
+  useEffect(() => {
+    if (!googleClientId) return;
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setIsGoogleReady(true);
+    document.head.appendChild(script);
+    return () => { document.head.removeChild(script); };
+  }, [googleClientId]);
 
   const reset = (newMode: Mode) => {
     setMode(newMode);
@@ -92,8 +107,43 @@ export default function Auth() {
         }
       }
     } catch (err: any) {
-      setError(err.message || "Something went wrong. Please try again.");
+      setError(err?.response?.data?.message || err?.message || "Something went wrong. Please try again.");
     }
+  };
+
+  const handleGoogleLogin = () => {
+    if (!googleClientId || !isGoogleReady || !(window as any).google?.accounts?.oauth2) {
+      setError("Google Sign-In is not configured. Add VITE_GOOGLE_CLIENT_ID to enable it.");
+      return;
+    }
+    setGoogleLoading(true);
+    const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+      client_id: googleClientId,
+      scope: "openid email profile",
+      callback: async (tokenResponse: { access_token?: string; error?: string }) => {
+        if (!tokenResponse?.access_token || tokenResponse.error) {
+          setGoogleLoading(false);
+          setError("Google authentication failed. Please try again.");
+          return;
+        }
+        try {
+          const res = await fetch(`${API}/auth/google`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accessToken: tokenResponse.access_token, role }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.message || "Google login failed");
+          localStorage.setItem("hirenext_token", data.token);
+          window.location.href = data.user?.role === "admin" ? "/dashboard/admin" : data.user?.role === "recruiter" ? "/dashboard/recruiter" : "/dashboard/jobs";
+        } catch (e: any) {
+          setError(e?.message || "Google login failed. Try email sign in.");
+        } finally {
+          setGoogleLoading(false);
+        }
+      },
+    });
+    tokenClient.requestAccessToken();
   };
 
   const handleSendOtp = (e: React.FormEvent) => {
@@ -199,7 +249,8 @@ export default function Auth() {
 
               {/* ── 1. Google ── */}
               <button
-                onClick={() => alert("Google login is coming soon! Use email or try the demo below.")}
+                onClick={handleGoogleLogin}
+                disabled={googleLoading}
                 className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl bg-white text-gray-800 font-semibold text-sm hover:bg-gray-50 active:bg-gray-100 transition-all duration-200 shadow-[0_2px_12px_rgba(0,0,0,0.3)]"
               >
                 <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
@@ -209,7 +260,7 @@ export default function Auth() {
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                 </svg>
                 Continue with Google
-                <span className="text-xs text-gray-400 font-normal">(Soon)</span>
+                {googleLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500" />}
               </button>
 
               {/* ── 2. Phone OTP ── */}
@@ -355,6 +406,28 @@ export default function Auth() {
                           </>
                         )}
                       </button>
+                      {mode === "signin" && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!email) { setError("Enter your email first to reset password."); return; }
+                            const res = await fetch(`${API}/auth/password-reset`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ email }),
+                            });
+                            if (res.ok) {
+                              setError("");
+                              alert("Password reset email sent (if account exists).");
+                            } else {
+                              setError("Could not send password reset email.");
+                            }
+                          }}
+                          className="text-xs text-indigo-300 hover:text-indigo-200 transition-colors"
+                        >
+                          Forgot password?
+                        </button>
+                      )}
                     </motion.form>
                   )}
                 </AnimatePresence>
