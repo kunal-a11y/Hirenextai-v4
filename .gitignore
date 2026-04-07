@@ -48,3 +48,7 @@ Thumbs.db
 .cache/
 .local/
 artifacts/hirenextai/.env
+
+.env
+node_modules
+dist
